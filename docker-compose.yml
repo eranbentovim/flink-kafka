@@ -26,9 +26,8 @@ x-kafka-env-common: &kafka-env-common
   KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
   EXTRA_ARGS: "-Xms128m -Xmx256m -javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent-0.19.0.jar=9404:/opt/jmx-exporter/kafka-2_0_0.yml"
 
-
 services:
-
+  ### Kafka related services
   kafka-0:
     <<: *kafka-common
     environment:
@@ -115,7 +114,7 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=grafana
+      - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
@@ -127,6 +126,47 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  ### Flink related services
+  jobmanager:
+    image: flink:latest
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    networks:
+      - kafka
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        web.upload.dir: /opt/flink/flink-web
+    volumes:
+      - ./flink/data/flink-web:/opt/flink/flink-web
+      - ./flink/data/usrlib:/opt/flink/usrlib
+    healthcheck:
+      test: curl --fail localhost:8081
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  taskmanager:
+    image: flink:latest
+    depends_on:
+      - jobmanager
+      - kafka-0
+      - kafka-1
+    command: taskmanager
+    scale: 1
+    networks:
+      - kafka
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    volumes:
+      - ./flink/data/usrlib:/opt/flink/usrlib
 
 networks:
   kafka:
